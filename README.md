@@ -2,7 +2,7 @@
 [Michel Silva Fornaciali, Dr](http://lattes.cnpq.br/5792124071429665).
 Supercomputação. [Insper](https://github.com/Insper), 2023.
 
-# Maximal Clique Analisys
+# Maximal Clique Analysis
 
 The idea of a clique in a graph is relatively simple. At the most general level,
 a clique is a subset of a network in which actors are closer to each other than
