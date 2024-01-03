@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
         cout << i+1 << "  -  ";
 
         for (unsigned int j : indexes) {
-            cout << graph[i][j] << ' ';
+            cout << (graph[i][j] ? 'X' : ' ') << ' ';
         }
         cout << endl;
     }

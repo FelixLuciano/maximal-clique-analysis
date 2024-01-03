@@ -4,112 +4,159 @@
 #include <tuple>
 #include <set>
 
-#include <omp.h>
 
-
-std::vector<unsigned int> getNodeMaximalClique(std::vector<std::vector<bool>>& graph, unsigned int nVertices, unsigned int node) {
+std::vector<std::tuple<unsigned int, unsigned int, std::vector<bool>>> getNodeNeighboorsIntersections(
+    std::vector<std::vector<bool>>& graph,
+    unsigned int nVertices,
+    unsigned int node
+) {
     std::vector<std::tuple<unsigned int, unsigned int, std::vector<bool>>> intersections;
 
-    #pragma omp parallel num_threads(nVertices)
-    {
-        #pragma omp for schedule(static, 12)
-        for (unsigned int i = 0; i < nVertices; i++) {
-            if (i == node || graph[node][i] == 0)
-                continue;
+    for (unsigned int i = 0; i < nVertices; i++) {
+        if (i == node || graph[node][i] == 0)
+            continue;
 
-            std::vector<bool> intersection(nVertices, 0);
+        std::vector<bool> intersection(nVertices, 0);
+        int degree = 0;
 
-            for (unsigned int j = 0; j < nVertices; j++)
-                if (j == node || j == i || graph[node][j] & graph[i][j])
-                    intersection[j] = 1;
-
-            #pragma omp critical
-            {
-                intersections.emplace_back(i, 0, intersection);
-            }
-        }
-    }
-
-    #pragma omp parallel num_threads(intersections.size())
-    {
-        #pragma omp for schedule(static, 12)
-        for (auto u = intersections.begin(); u != intersections.end(); ++u) {
-            auto& u_vec = std::get<2>(*u);
-            unsigned int degree1 = 0;
-
-            for (auto v = u+1; v != intersections.end(); ++v) {
-                if (!u_vec[std::get<0>(*v)]) continue;
-
-                auto& v_vec = std::get<2>(*v);
-                unsigned int degree2 = 0;
-
-                for (unsigned long i = 0; i < nVertices; i++)
-                    if (u_vec[i] & v_vec[i])
-                        ++degree2;
-                
-                if (degree1 < degree2)
-                    degree1 = degree2;
-
-                if (std::get<1>(*v) < degree2)
-                    std::get<1>(*v) = degree2;
+        for (unsigned int j = 0; j < nVertices; j++)
+            if (j == node || j == i || graph[node][j] & graph[i][j]) {
+                intersection[j] = 1;
+                ++degree;
             }
 
-            if (std::get<1>(*u) < degree1)
-                std::get<1>(*u) = degree1;
-        }
+        intersections.emplace_back(i, degree, intersection);
     }
 
-    std::sort(intersections.begin(), intersections.end(), [](const auto& a, const auto& b) {
-        return std::get<1>(a) > std::get<1>(b);
-    });
+    return intersections;
+}
 
-    std::vector<bool> clique(nVertices);
-
+void updateNodeNeighboorsDegree(
+    std::vector<std::tuple<unsigned int, unsigned int, std::vector<bool>>>& intersections,
+    unsigned int nVertices
+) {
     for (auto u = intersections.begin(); u != intersections.end(); ++u) {
-        std::fill(clique.begin(), clique.end(), 1);
+        auto& u_vec = std::get<2>(*u);
+        int degree = 0;
 
         for (auto v = u+1; v != intersections.end(); ++v) {
-            if (clique[std::get<0>(*v)] == 0)
-                continue;
+            if (!u_vec[std::get<0>(*v)]) continue;
 
-            for (unsigned int i = 0; i < nVertices; i++)
-                clique[i] = clique[i] & std::get<2>(*v)[i];
+            auto& v_vec = std::get<2>(*v);
+            degree = 0;
+
+            for (unsigned long i = 0; i < nVertices; i++) {
+                if (u_vec[i] & v_vec[i]) {
+                    ++degree;
+                }
+            }
+
+            std::get<1>(*v) += degree;
         }
 
-        if (clique[std::get<0>(*u)])
-            break;
+        std::get<1>(*u) += degree;
     }
 
+    std::stable_sort(intersections.begin(), intersections.end(), [](const auto& a, const auto& b) {
+        return std::get<1>(a) > std::get<1>(b);
+    });
+}
+
+unsigned int getNodeDegree(std::vector<bool>& node, unsigned int start = 0) {
+    unsigned int degree = start;
+
+    for (bool n : node)
+        degree += n;
+
+    return degree;
+}
+
+std::vector<bool> mergeNodeNeighboors(
+    std::vector<std::tuple<unsigned int, unsigned int, std::vector<bool>>>& intersections,
+    unsigned int nVertices
+) {
+    std::vector<bool> result(nVertices, true);
+    auto v = intersections.begin();
+
+    for (; v != intersections.end(); ++v) {
+        unsigned int index = std::get<0>(*v);
+
+        if (!result[index])
+            continue;
+
+        std::vector<bool> v_vec = std::get<2>(*v);
+        for (unsigned int i = 0; i < nVertices; i++) {
+            result[i] = result[i] & v_vec[i];
+        }
+
+        for (auto w = v+1; w != intersections.end(); ++w) {
+            auto& w_vec = std::get<2>(*w);
+
+            unsigned int degree = 0;
+            for (unsigned int i = 0; i < w_vec.size(); ++i)
+                if (w_vec[i] & result[i])
+                    ++degree;
+
+            std::get<1>(*w) = degree;
+        }
+
+        std::sort(v+1, intersections.end(), [](auto &a, auto &b) {
+            if (std::get<1>(a) > std::get<1>(b)) {
+                return true;
+            }
+            else if (std::get<1>(a) == std::get<1>(b)) {
+                return getNodeDegree(std::get<2>(a)) < getNodeDegree(std::get<2>(b));
+            }
+
+            return false;
+        });
+    }
+
+    return result;
+}
+
+std::vector<unsigned int> getNodeIds(std::vector<bool> node) {
     std::vector<unsigned int> ids;
 
-    for (unsigned int i = 0; i < clique.size(); i++)
-        if (clique[i] != 0)
+    for (unsigned int i = 0; i < node.size(); i++)
+        if (node[i] != 0)
             ids.push_back(i);
 
     return ids;
 }
 
+std::vector<bool> getNodeMaximalClique(
+    std::vector<std::vector<bool>>& graph,
+    unsigned int nVertices,
+    unsigned int node
+) {
+    std::vector<std::tuple<unsigned int, unsigned int, std::vector<bool>>> intersections = getNodeNeighboorsIntersections(graph, nVertices, node);
+
+    updateNodeNeighboorsDegree(intersections, nVertices);
+
+    return mergeNodeNeighboors(intersections, nVertices);
+}
+
 std::vector<unsigned int> getMaximalClique(std::vector<std::vector<bool>>& graph, unsigned int nVertices) {
-    std::vector<unsigned int> clique;
+    std::vector<std::tuple<unsigned int, int, std::vector<bool>>> cliques;
+    unsigned int maxDegree = 0;
 
-    #pragma omp parallel num_threads(omp_get_max_threads() / nVertices)
-    {
-        #pragma omp for schedule(static, 12)
-        for (unsigned int i = 0; i < nVertices; i++) {
-            unsigned int degree = 1;
+    for (unsigned int i = 0; i < nVertices; i++) {
+        if (getNodeDegree(graph[i], 1) < maxDegree)
+            continue;
 
-            for (bool n : graph[i])
-                degree += n;
+        std::vector<bool> nodeClique = getNodeMaximalClique(graph, nVertices, i);
+        unsigned int nodeDegree = getNodeDegree(nodeClique);
 
-            if (degree < clique.size())
-                continue;
-
-            auto nodeClique = getNodeMaximalClique(graph, nVertices, i);
-
-            if (nodeClique.size() > clique.size())
-                clique = nodeClique;
+        if (maxDegree < nodeDegree) {
+            cliques.clear();
+            maxDegree = nodeDegree;
+        }
+        
+        if (maxDegree == nodeDegree) {
+            cliques.emplace_back(i, 0, nodeClique);
         }
     }
 
-    return clique;
+    return getNodeIds(std::get<2>(cliques[0]));
 }

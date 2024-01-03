@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     }
 
     cout << "Filename: " << filename << endl;
-    cout << "Size:     " << indexes.size() << ":" << indexes.size() << " (of " << nVertices << ":" << nVertices << ")" << endl;
+    cout << "Size:     " << indexes.size() << endl;
 
     if (isClique == true)
         cout << "Status:   PASS";
